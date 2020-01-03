@@ -68,6 +68,7 @@ impl Grammar {
             grammar_symbols,
             canonical_collection: BTreeSet::new(),
             first_sets: BTreeMap::new(),
+            follow_sets: BTreeMap::new(),
         };
         grammar_helper.init(self.start_symbols.clone());
         grammar_helper.build();
@@ -122,7 +123,9 @@ impl Production {
     ) -> Result<Vec<Symbol>, GrammarError> {
         let mut symbols = Vec::new();
         for symbol_candidate in self.0.iter() {
-            if let Some(symbol) = grammar_symbols.get(symbol_candidate) {
+            if symbol_candidate == "e" {
+                symbols.push(Symbol::Epsilon);
+            } else if let Some(symbol) = grammar_symbols.get(symbol_candidate) {
                 symbols.push(symbol.clone());
             } else {
                 return Err(GrammarError::InvalidSymbol(symbol_candidate.clone()));
@@ -132,18 +135,28 @@ impl Production {
     }
 }
 
-pub struct GrammarHelper<'a> {
-    pub(crate) grammar: &'a Grammar,
-    pub(crate) grammar_symbols: HashMap<String, Symbol>,
-    pub(crate) canonical_collection: BTreeSet<BTreeSet<LR0Item>>,
-    pub(crate) first_sets: BTreeMap<Symbol, BTreeSet<Symbol>>,
+struct GrammarHelper<'a> {
+    grammar: &'a Grammar,
+    grammar_symbols: HashMap<String, Symbol>,
+    canonical_collection: BTreeSet<BTreeSet<LR0Item>>,
+    first_sets: BTreeMap<Symbol, BTreeSet<Symbol>>,
+    follow_sets: BTreeMap<Symbol, BTreeSet<Symbol>>,
 }
 
 impl<'a> GrammarHelper<'a> {
     pub fn init(&mut self, start_symbols: Vec<String>) {
         self.compute_first_sets();
+        self.compute_follow_sets();
+        // TODO: predict sets?
+
         println!("First sets:");
         for (sym, set) in self.first_sets.iter() {
+            println!(" {:?} - {:?}", sym, set);
+        }
+        println!("");
+
+        println!("Follow sets:");
+        for (sym, set) in self.follow_sets.iter() {
             println!(" {:?} - {:?}", sym, set);
         }
         println!("");
@@ -174,18 +187,23 @@ impl<'a> GrammarHelper<'a> {
                     }
                     Symbol::NT(_) => {
                         if !self.first_sets.contains_key(symbol) {
-                            self.first_sets
-                                .insert(symbol.clone(), BTreeSet::new());
+                            self.first_sets.insert(symbol.clone(), BTreeSet::new());
                         }
                         let mut first_set = self.first_sets.get_mut(symbol).unwrap().clone();
-                        println!("FIRST({}): existing = {:?}", name, first_set);
                         'outer: for production in self.grammar.productions.get(name).unwrap() {
                             let symbol_list = production.symbols(&self.grammar_symbols).unwrap();
                             for yi in symbol_list {
+                                if yi == Symbol::Epsilon {
+                                    if first_set.insert(Symbol::Epsilon) {
+                                        changes = true;
+                                    }
+                                }
+
                                 if let Some(sym_first_set) = self.first_sets.get(&yi) {
                                     // if there's extra elements in FIRST(Yi)
                                     if !first_set.is_superset(sym_first_set) {
-                                        first_set = first_set.union(sym_first_set).cloned().collect();
+                                        first_set =
+                                            first_set.union(sym_first_set).cloned().collect();
                                         changes = true;
                                     }
 
@@ -219,6 +237,89 @@ impl<'a> GrammarHelper<'a> {
                         }
                     }
                     Symbol::Epsilon => {}
+                }
+            }
+
+            if !changes {
+                break;
+            }
+        }
+    }
+
+    fn compute_follow_sets(&mut self) {
+        for start_symbol in self.grammar.start_symbols.iter() {
+            let start_symbol = Symbol::NT(start_symbol.to_owned());
+            if !self.follow_sets.contains_key(&start_symbol) {
+                self.follow_sets
+                    .insert(start_symbol.clone(), BTreeSet::new());
+            }
+            // put $ in FOLLOW(S) for every start symbol
+            self.follow_sets
+                .get_mut(&start_symbol)
+                .unwrap()
+                .insert(Symbol::EOF);
+        }
+
+        for nonterminal in self.grammar.productions.keys() {
+            let nonterminal = Symbol::NT(nonterminal.to_owned());
+            if !self.follow_sets.contains_key(&nonterminal) {
+                self.follow_sets
+                    .insert(nonterminal.clone(), BTreeSet::new());
+            }
+        }
+
+        loop {
+            let mut changes = false;
+
+            for (nonterminal, productions) in self.grammar.productions.iter() {
+                let nonterminal = Symbol::NT(nonterminal.to_owned());
+                for production in productions {
+                    let symbol_list = production.symbols(&self.grammar_symbols).unwrap();
+                    // if A -> aBb, then take all of {FIRST(b) - e} and add it to FOLLOW(B)
+                    if symbol_list.len() >= 2 {
+                        let b = &symbol_list[symbol_list.len() - 1];
+                        let B = &symbol_list[symbol_list.len() - 2];
+                        let mut b_first_set = self.first_sets.get(b).unwrap().clone();
+                        b_first_set.remove(&Symbol::Epsilon);
+
+                        if let Some(mut follow_set) = self.follow_sets.get_mut(&B) {
+                            if !follow_set.is_superset(&b_first_set) {
+                                follow_set.append(&mut b_first_set);
+                                changes = true;
+                            }
+                        }
+                    }
+
+                    // if A -> aB, then everythign in FOLLOW(A) is in FOLLOW(B)
+                    if symbol_list.len() >= 1 {
+                        let B = &symbol_list[symbol_list.len() - 1];
+
+                        let mut a_follow_set =
+                            self.follow_sets.get_mut(&nonterminal).unwrap().clone();
+                        if let Some(mut follow_set) = self.follow_sets.get_mut(&B) {
+                            if !follow_set.is_superset(&a_follow_set) {
+                                follow_set.append(&mut a_follow_set);
+                                changes = true;
+                            }
+                        }
+                    }
+
+                    // if A -> aBb, and FIRST(b) contains epsilon, then everything in FOLLOW(A) is in FOLLOW(B)
+                    if symbol_list.len() >= 2 {
+                        let b = &symbol_list[symbol_list.len() - 1];
+                        let B = &symbol_list[symbol_list.len() - 2];
+                        let b_first_set = self.first_sets.get(b).unwrap().clone();
+                        if b_first_set.contains(&Symbol::Epsilon) {
+                            let mut a_follow_set =
+                                self.follow_sets.get_mut(&nonterminal).unwrap().clone();
+                            if let Some(mut follow_set) = self.follow_sets.get_mut(&B) {
+                                if !follow_set.is_superset(&a_follow_set) {
+                                    follow_set.append(&mut a_follow_set);
+                                    changes = true;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

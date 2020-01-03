@@ -11,7 +11,6 @@ macro_rules! make_grammar {
                 [$($symbol:ident),* $(,)?]
             ),* $(,)?]
         ),* $(,)?},
-
     } => {
         Grammar {
             start_symbols: vec![$(stringify!($start_symbol).to_owned())*],
@@ -36,18 +35,35 @@ pub fn pgen_grammar() -> Grammar {
             RightParen: r"\)",
         },
         productions: {
-            Expr: [
-                [Expr, Plus, Term],
-                [Term],
-            ],
-            Term: [
-                [Term, Times, Factor],
-                [Factor],
-            ],
-            Factor: [
-                [LeftParen, Expr, RightParen],
-                [Number],
-            ],
+            Expr: [ [Term, Expr2] ],
+            Expr2: [ [Plus, Term, Expr2], [e] ],
+            Term: [ [Factor, Term2] ],
+            Term2: [ [Times, Factor, Term2], [e] ],
+            Factor: [ [LeftParen, Expr, RightParen], [Number] ],
         },
     }
+    // make_grammar! {
+    //     start_symbols: [Expr],
+    //     terminals: {
+    //         Number: r"\d+",
+    //         Plus: r"\+",
+    //         Times: r"\*",
+    //         LeftParen: r"\(",
+    //         RightParen: r"\)",
+    //     },
+    //     productions: {
+    //         Expr: [
+    //             [Expr, Plus, Term],
+    //             [Term],
+    //         ],
+    //         Term: [
+    //             [Term, Times, Factor],
+    //             [Factor],
+    //         ],
+    //         Factor: [
+    //             [LeftParen, Expr, RightParen],
+    //             [Number],
+    //         ],
+    //     },
+    // }
 }
