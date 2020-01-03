@@ -3,6 +3,8 @@ pgen
 
 Rust parser generator project-- WIP
 
+Check out the example grammar at [src/this.rs](src/this.rs) and its generated output at [wtf/src/lib.rs](wtf/src/lib.rs)
+
 Roadmap:
 
 - [ ] Lexer generation
