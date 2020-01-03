@@ -141,7 +141,7 @@ pub struct GrammarHelper<'a> {
 
 impl<'a> GrammarHelper<'a> {
     pub fn init(&mut self, start_symbols: Vec<String>) {
-        // self.compute_first_sets();
+        self.compute_first_sets();
         println!("First sets:");
         for (sym, set) in self.first_sets.iter() {
             println!(" {:?} - {:?}", sym, set);
@@ -173,14 +173,42 @@ impl<'a> GrammarHelper<'a> {
                         }
                     }
                     Symbol::NT(_) => {
-                        for production in self.grammar.productions.get(name).unwrap() {
-                            let symbol_list = production.symbols(&self.grammar_symbols).unwrap();
-                            let mut i = 0;
-                            while i < symbol_list.len() {
-                                let symbol = &symbol_list[i];
-                                if let Some(first_set) = self.first_sets.get(symbol) {}
-                            }
+                        if !self.first_sets.contains_key(symbol) {
+                            self.first_sets
+                                .insert(symbol.clone(), BTreeSet::new());
                         }
+                        let mut first_set = self.first_sets.get_mut(symbol).unwrap().clone();
+                        println!("FIRST({}): existing = {:?}", name, first_set);
+                        'outer: for production in self.grammar.productions.get(name).unwrap() {
+                            let symbol_list = production.symbols(&self.grammar_symbols).unwrap();
+                            for yi in symbol_list {
+                                if let Some(sym_first_set) = self.first_sets.get(&yi) {
+                                    // if there's extra elements in FIRST(Yi)
+                                    if !first_set.is_superset(sym_first_set) {
+                                        first_set = first_set.union(sym_first_set).cloned().collect();
+                                        changes = true;
+                                    }
+
+                                    // if it contains epsilon, continue looking
+                                    // this means we see X -> ... "" "" Yi
+                                    // and this current one is also "", so keep going
+                                    // otherwise, break
+                                    if !sym_first_set.contains(&Symbol::Epsilon) {
+                                        continue 'outer;
+                                    }
+                                }
+
+                                // no symbols calculated here yet, continue
+                                continue 'outer;
+                            }
+
+                            // at this point we've reached the end of the list
+                            // since we haven't broken out, it means the last one also contains epsilon
+                            // add epsilon to the first set now
+                            first_set.insert(Symbol::Epsilon);
+                            changes = true;
+                        }
+                        self.first_sets.insert(symbol.clone(), first_set);
                     }
                     Symbol::EOF => {
                         if !self.first_sets.contains_key(symbol) {

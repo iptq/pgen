@@ -2,11 +2,11 @@
 use std::io::Read;
 use pgen::regex::RegexSet;
 const PATTERNS: &[&'static str] = &[
-    "\\*",
-    "\\+",
-    "\\)",
-    "\\d+",
     "\\(",
+    "\\d+",
+    "\\*",
+    "\\)",
+    "\\+",
 ];
 pub struct Parser {
     regex_set: RegexSet,
