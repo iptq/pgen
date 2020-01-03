@@ -2,9 +2,9 @@
 use std::io::Read;
 use pgen::regex::RegexSet;
 const PATTERNS: &[&'static str] = &[
-    "\\)",
-    "\\+",
     "\\*",
+    "\\+",
+    "\\)",
     "\\d+",
     "\\(",
 ];
@@ -16,6 +16,7 @@ impl Parser {
         let regex_set = RegexSet::new(PATTERNS.clone()).unwrap();
         Parser { regex_set }
     }
-    pub fn parse_Expr(&self, reader: impl Read) {
+    pub fn parse_Expr(&self, input: impl AsRef<str>) {
+        let input = input.as_ref();
     }
 }

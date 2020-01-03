@@ -141,7 +141,7 @@ pub struct GrammarHelper<'a> {
 
 impl<'a> GrammarHelper<'a> {
     pub fn init(&mut self, start_symbols: Vec<String>) {
-        self.compute_first_sets();
+        // self.compute_first_sets();
         println!("First sets:");
         for (sym, set) in self.first_sets.iter() {
             println!(" {:?} - {:?}", sym, set);
@@ -172,7 +172,16 @@ impl<'a> GrammarHelper<'a> {
                             changes = true;
                         }
                     }
-                    Symbol::NT(_) => {}
+                    Symbol::NT(_) => {
+                        for production in self.grammar.productions.get(name).unwrap() {
+                            let symbol_list = production.symbols(&self.grammar_symbols).unwrap();
+                            let mut i = 0;
+                            while i < symbol_list.len() {
+                                let symbol = &symbol_list[i];
+                                if let Some(first_set) = self.first_sets.get(symbol) {}
+                            }
+                        }
+                    }
                     Symbol::EOF => {
                         if !self.first_sets.contains_key(symbol) {
                             self.first_sets.insert(symbol.clone(), BTreeSet::new());

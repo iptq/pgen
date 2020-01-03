@@ -1,54 +1,53 @@
 use crate::Grammar;
 
+macro_rules! make_grammar {
+    {
+        start_symbols: [$($start_symbol:ident),* $(,)?],
+        terminals: {
+            $($tname:ident: $regex:expr),* $(,)?
+        },
+        productions: {$(
+            $ntname:ident: [$(
+                [$($symbol:ident),* $(,)?]
+            ),* $(,)?]
+        ),* $(,)?},
+
+    } => {
+        Grammar {
+            start_symbols: vec![$(stringify!($start_symbol).to_owned())*],
+            terminals: vec![$((stringify!($tname).to_owned(), $regex.to_owned()),)*].into_iter().collect(),
+            productions: vec![$(
+                (stringify!($ntname).to_owned(), vec![
+                    $(vec![$(stringify!($symbol).to_owned(),)*].into_iter().into(),)*
+                ]),
+            )*].into_iter().collect(),
+        }
+    }
+}
+
 pub fn pgen_grammar() -> Grammar {
-    let start_symbols = vec!["Expr".to_owned()];
-    let terminals = vec![
-        ("Number".to_owned(), r"\d+".to_owned()),
-        ("Plus".to_owned(), r"\+".to_owned()),
-        ("Times".to_owned(), r"\*".to_owned()),
-        ("LeftParen".to_owned(), r"\(".to_owned()),
-        ("RightParen".to_owned(), r"\)".to_owned()),
-    ]
-    .into_iter()
-    .collect();
-    let productions = vec![
-        (
-            "Expr".to_owned(),
-            vec![
-                vec!["Expr".to_owned(), "Plus".to_owned(), "Term".to_owned()]
-                    .into_iter()
-                    .into(),
-                vec!["Term".to_owned()].into_iter().into(),
+    make_grammar! {
+        start_symbols: [Expr],
+        terminals: {
+            Number: r"\d+",
+            Plus: r"\+",
+            Times: r"\*",
+            LeftParen: r"\(",
+            RightParen: r"\)",
+        },
+        productions: {
+            Expr: [
+                [Expr, Plus, Term],
+                [Term],
             ],
-        ),
-        (
-            "Term".to_owned(),
-            vec![
-                vec!["Term".to_owned(), "Times".to_owned(), "Factor".to_owned()]
-                    .into_iter()
-                    .into(),
-                vec!["Factor".to_owned()].into_iter().into(),
+            Term: [
+                [Term, Times, Factor],
+                [Factor],
             ],
-        ),
-        (
-            "Factor".to_owned(),
-            vec![
-                vec![
-                    "LeftParen".to_owned(),
-                    "Expr".to_owned(),
-                    "RightParen".to_owned(),
-                ]
-                .into_iter()
-                .into(),
-                vec!["Number".to_owned()].into_iter().into(),
+            Factor: [
+                [LeftParen, Expr, RightParen],
+                [Number],
             ],
-        ),
-    ]
-    .into_iter()
-    .collect();
-    Grammar {
-        start_symbols,
-        terminals,
-        productions,
+        },
     }
 }

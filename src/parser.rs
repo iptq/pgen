@@ -34,9 +34,10 @@ impl Parser {
         for nonterminal in self.start_symbols.iter() {
             writeln!(
                 w,
-                "    pub fn parse_{}(&self, reader: impl Read) {{",
+                "    pub fn parse_{}(&self, input: impl AsRef<str>) {{",
                 nonterminal
             )?;
+            writeln!(w, "        let input = input.as_ref();")?;
             writeln!(w, "    }}")?;
         }
         writeln!(w, "}}")?;
