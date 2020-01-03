@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Write;
 
 use crate::items::LR0Item;
-use crate::parser::ParseTable;
+use crate::parser::{Action, ParseTable};
 use crate::Parser;
 
 #[derive(Debug, Error)]
@@ -42,15 +42,25 @@ impl Grammar {
         };
 
         // build items
+        let mut counter = 0;
+        let mut grammar_productions = HashMap::new();
         let items = {
             let mut items = Vec::new();
             for (nonterminal, productions) in self.productions.iter() {
+                grammar_productions.insert(nonterminal.clone(), Vec::new());
                 for production in productions {
+                    grammar_productions
+                        .get_mut(nonterminal)
+                        .unwrap()
+                        .push((counter, production.clone()));
                     items.push(LR0Item {
                         lhs: nonterminal.clone(),
                         dot: 0,
                         symbols: production.symbols(&grammar_symbols)?,
+                        is_start: false,
+                        production_number: Some(counter),
                     });
+                    counter += 1;
                 }
             }
             items
@@ -69,6 +79,7 @@ impl Grammar {
             canonical_collection: BTreeSet::new(),
             first_sets: BTreeMap::new(),
             follow_sets: BTreeMap::new(),
+            productions: grammar_productions,
         };
         grammar_helper.init(self.start_symbols.clone());
         grammar_helper.build();
@@ -82,15 +93,19 @@ impl Grammar {
             println!("");
         }
 
+        let table = grammar_helper.parse_table();
+
         Ok(Parser {
             start_symbols: self.start_symbols,
             terminals: self.terminals,
             nonterminals: self.productions.keys().cloned().collect(),
+            // productions: grammar_productions,
+            table,
         })
     }
 }
 
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Symbol {
     T(String),
     NT(String),
@@ -108,6 +123,7 @@ impl Symbol {
     }
 }
 
+#[derive(Clone)]
 pub struct Production(pub(crate) Vec<String>);
 
 impl<T: Iterator<Item = String>> From<T> for Production {
@@ -138,6 +154,7 @@ impl Production {
 struct GrammarHelper<'a> {
     grammar: &'a Grammar,
     grammar_symbols: HashMap<String, Symbol>,
+    productions: HashMap<String, Vec<(usize, Production)>>,
     canonical_collection: BTreeSet<BTreeSet<LR0Item>>,
     first_sets: BTreeMap<Symbol, BTreeSet<Symbol>>,
     follow_sets: BTreeMap<Symbol, BTreeSet<Symbol>>,
@@ -166,7 +183,9 @@ impl<'a> GrammarHelper<'a> {
             let new_item = LR0Item {
                 lhs: start_symbol.clone() + "'",
                 dot: 0,
-                symbols: vec![Symbol::NT(start_symbol), Symbol::EOF],
+                symbols: vec![Symbol::NT(start_symbol)],
+                is_start: true,
+                production_number: None,
             };
             new_set.insert(new_item);
             self.canonical_collection.insert(self.closure(new_set));
@@ -351,10 +370,46 @@ impl<'a> GrammarHelper<'a> {
         }
     }
 
-    // TODO:
     pub fn parse_table(&self) -> ParseTable {
         let mut states = Vec::new();
-        for (i, state) in self.canonical_collection.iter().enumerate() {}
+        let reverse_map: BTreeMap<_, _> = self
+            .canonical_collection
+            .iter()
+            .enumerate()
+            .map(|(a, b)| (b, a))
+            .collect();
+        for (i, item_set) in self.canonical_collection.iter().enumerate() {
+            let mut action = HashMap::new();
+            let mut goto = HashMap::new();
+            for item in item_set {
+                if let Some(next_symbol) = item.symbol_after_dot() {
+                    let g = self.goto(item_set.clone(), next_symbol.clone());
+                    if let Some(num) = reverse_map.get(&g) {
+                        action.insert(next_symbol, Action::Shift(*num));
+                    }
+                }
+
+                if item.dot_at_end() {
+                    if item.is_start {
+                        action.insert(Symbol::EOF, Action::Accept);
+                    } else {
+                        let prev_symbol = item.symbol_before_dot().unwrap();
+                        if let Some(n) = item.production_number {
+                            action.insert(prev_symbol, Action::Reduce(n));
+                        }
+                    }
+                }
+
+                for nonterminal in self.grammar.productions.keys() {
+                    let nterm = Symbol::NT(nonterminal.to_owned());
+                    let g = self.goto(item_set.clone(), nterm.clone());
+                    if let Some(num) = reverse_map.get(&g) {
+                        goto.insert(nterm, *num);
+                    }
+                }
+            }
+            states.push((action, goto));
+        }
         ParseTable(states)
     }
 
@@ -378,15 +433,17 @@ impl<'a> GrammarHelper<'a> {
             for item in item_set.iter() {
                 if let Some(Symbol::NT(next_symbol)) = item.symbol_after_dot() {
                     for production in self
-                        .grammar
                         .productions
                         .get(&next_symbol)
                         .expect("this better succeed")
                     {
+                        let (counter, production) = production;
                         let new_item = LR0Item {
                             lhs: next_symbol.clone(),
                             dot: 0,
                             symbols: production.symbols(&self.grammar_symbols).unwrap(),
+                            is_start: false,
+                            production_number: Some(*counter),
                         };
                         if !item_set.contains(&new_item) {
                             to_add.insert(new_item);

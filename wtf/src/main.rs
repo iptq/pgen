@@ -4,5 +4,5 @@ use wtf::Parser;
 
 fn main() {
     let parser = Parser::new();
-    println!("{:?}", parser.parse_Expr("1+2*3"));
+    println!("{:?}", parser.parse_E("1+2*3"));
 }

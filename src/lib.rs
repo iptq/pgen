@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate prettytable;
+#[macro_use]
 extern crate thiserror;
 
 pub extern crate regex;

@@ -26,43 +26,43 @@ macro_rules! make_grammar {
 
 pub fn pgen_grammar() -> Grammar {
     make_grammar! {
-        start_symbols: [Expr],
+        start_symbols: [E],
         terminals: {
-            Number: r"\d+",
-            Plus: r"\+",
-            Times: r"\*",
-            LeftParen: r"\(",
-            RightParen: r"\)",
+            N: r"\d+",
+            Add: r"\+",
+            Mul: r"\*",
+            LP: r"\(",
+            RP: r"\)",
         },
         productions: {
-            Expr: [ [Term, Expr2] ],
-            Expr2: [ [Plus, Term, Expr2], [e] ],
-            Term: [ [Factor, Term2] ],
-            Term2: [ [Times, Factor, Term2], [e] ],
-            Factor: [ [LeftParen, Expr, RightParen], [Number] ],
+            E: [ [T, E_] ],
+            E_: [ [Add, T, E_], [e] ],
+            T: [ [F, T_] ],
+            T_: [ [Mul, F, T_], [e] ],
+            F: [ [LP, E, RP], [N] ],
         },
     }
     // make_grammar! {
-    //     start_symbols: [Expr],
+    //     start_symbols: [E],
     //     terminals: {
-    //         Number: r"\d+",
-    //         Plus: r"\+",
-    //         Times: r"\*",
-    //         LeftParen: r"\(",
-    //         RightParen: r"\)",
+    //         N: r"\d+",
+    //         Add: r"\+",
+    //         Mul: r"\*",
+    //         LP: r"\(",
+    //         RP: r"\)",
     //     },
     //     productions: {
-    //         Expr: [
-    //             [Expr, Plus, Term],
-    //             [Term],
+    //         E: [
+    //             [E, Add, T],
+    //             [T],
     //         ],
-    //         Term: [
-    //             [Term, Times, Factor],
-    //             [Factor],
+    //         T: [
+    //             [Term, Mul, F],
+    //             [F],
     //         ],
-    //         Factor: [
-    //             [LeftParen, Expr, RightParen],
-    //             [Number],
+    //         F: [
+    //             [LP, E, RP],
+    //             [N],
     //         ],
     //     },
     // }
