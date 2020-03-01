@@ -1,3 +1,5 @@
+use symbol::Symbol as Id;
+
 use crate::Grammar;
 
 macro_rules! make_grammar {
@@ -13,11 +15,11 @@ macro_rules! make_grammar {
         ),* $(,)?},
     } => {
         Grammar {
-            start_symbols: vec![$(stringify!($start_symbol).to_owned())*],
-            terminals: vec![$((stringify!($tname).to_owned(), $regex.to_owned()),)*].into_iter().collect(),
+            start_symbols: vec![$(Id::from(stringify!($start_symbol)))*],
+            terminals: vec![$((Id::from(stringify!($tname)), $regex.to_owned()),)*].into_iter().collect(),
             productions: vec![$(
-                (stringify!($ntname).to_owned(), vec![
-                    $(vec![$(stringify!($symbol).to_owned(),)*].into_iter().into(),)*
+                (Id::from(stringify!($ntname)), vec![
+                    $(vec![$(Id::from(stringify!($symbol)),)*].into_iter().into(),)*
                 ]),
             )*].into_iter().collect(),
         }
@@ -36,34 +38,10 @@ pub fn pgen_grammar() -> Grammar {
         },
         productions: {
             E: [ [T, E_] ],
-            E_: [ [Add, T, E_], [e] ],
+            E_: [ [Add, T, E_], [ɛ] ],
             T: [ [F, T_] ],
-            T_: [ [Mul, F, T_], [e] ],
+            T_: [ [Mul, F, T_], [ɛ] ],
             F: [ [LP, E, RP], [N] ],
         },
     }
-    // make_grammar! {
-    //     start_symbols: [E],
-    //     terminals: {
-    //         N: r"\d+",
-    //         Add: r"\+",
-    //         Mul: r"\*",
-    //         LP: r"\(",
-    //         RP: r"\)",
-    //     },
-    //     productions: {
-    //         E: [
-    //             [E, Add, T],
-    //             [T],
-    //         ],
-    //         T: [
-    //             [Term, Mul, F],
-    //             [F],
-    //         ],
-    //         F: [
-    //             [LP, E, RP],
-    //             [N],
-    //         ],
-    //     },
-    // }
 }

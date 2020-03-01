@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Write;
 
+use symbol::Symbol as Id;
+
 use crate::items::LR0Item;
 use crate::parser::{Action, ParseTable};
 use crate::Parser;
@@ -8,22 +10,23 @@ use crate::Parser;
 #[derive(Debug, Error)]
 pub enum GrammarError {
     #[error("Name conflict: {0}")]
-    NameConflict(String),
+    NameConflict(Id),
 
     #[error("Invalid symbol: {0}")]
-    InvalidSymbol(String),
+    InvalidSymbol(Id),
 
     #[error("Start symbols must be nonterminals: {0}")]
-    StartingTerminal(String),
+    StartingTerminal(Id),
 }
 
 pub struct Grammar {
-    pub(crate) start_symbols: Vec<String>,
-    pub(crate) terminals: HashMap<String, String>,
-    pub(crate) productions: HashMap<String, Vec<Production>>,
+    pub(crate) start_symbols: Vec<Id>,
+    pub(crate) terminals: HashMap<Id, String>,
+    pub(crate) productions: HashMap<Id, Vec<Production>>,
 }
 
 impl Grammar {
+    /// Builds the main Parser struct.
     pub fn build(self) -> Result<Parser, GrammarError> {
         // name -> symbol map
         let grammar_symbols = {
@@ -98,7 +101,7 @@ impl Grammar {
         Ok(Parser {
             start_symbols: self.start_symbols,
             terminals: self.terminals,
-            nonterminals: self.productions.keys().cloned().collect(),
+            nonterminals: self.productions.keys().cloned().collect::<HashSet<Id>>(),
             // productions: grammar_productions,
             table,
         })
@@ -107,26 +110,26 @@ impl Grammar {
 
 #[derive(Clone, Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Symbol {
-    T(String),
-    NT(String),
+    T(Id),
+    NT(Id),
     Epsilon,
     EOF,
 }
 
 impl Symbol {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> Id {
         match self {
-            Symbol::T(name) | Symbol::NT(name) => name.clone(),
-            Symbol::Epsilon => "\u{025b}".to_owned(),
-            Symbol::EOF => "$".to_owned(),
+            Symbol::T(name) | Symbol::NT(name) => *name,
+            Symbol::Epsilon => Id::from("\u{025b}"),
+            Symbol::EOF => Id::from("$"),
         }
     }
 }
 
 #[derive(Clone)]
-pub struct Production(pub(crate) Vec<String>);
+pub struct Production(pub(crate) Vec<Id>);
 
-impl<T: Iterator<Item = String>> From<T> for Production {
+impl<T: Iterator<Item = Id>> From<T> for Production {
     fn from(iter: T) -> Self {
         Production(iter.collect())
     }
@@ -135,11 +138,11 @@ impl<T: Iterator<Item = String>> From<T> for Production {
 impl Production {
     pub fn symbols(
         &self,
-        grammar_symbols: &HashMap<String, Symbol>,
+        grammar_symbols: &HashMap<Id, Symbol>,
     ) -> Result<Vec<Symbol>, GrammarError> {
         let mut symbols = Vec::new();
         for symbol_candidate in self.0.iter() {
-            if symbol_candidate == "e" {
+            if symbol_candidate.as_str() == "\u{025b}" {
                 symbols.push(Symbol::Epsilon);
             } else if let Some(symbol) = grammar_symbols.get(symbol_candidate) {
                 symbols.push(symbol.clone());
@@ -152,16 +155,21 @@ impl Production {
 }
 
 struct GrammarHelper<'a> {
+    /// The reference to the actual grammar
     grammar: &'a Grammar,
-    grammar_symbols: HashMap<String, Symbol>,
-    productions: HashMap<String, Vec<(usize, Production)>>,
+
+    /// This is a map from the name to the actual symbol
+    grammar_symbols: HashMap<Id, Symbol>,
+
+    /// A map from the name to the index of the production
+    productions: HashMap<Id, Vec<(usize, Production)>>,
     canonical_collection: BTreeSet<BTreeSet<LR0Item>>,
     first_sets: BTreeMap<Symbol, BTreeSet<Symbol>>,
     follow_sets: BTreeMap<Symbol, BTreeSet<Symbol>>,
 }
 
 impl<'a> GrammarHelper<'a> {
-    pub fn init(&mut self, start_symbols: Vec<String>) {
+    pub fn init(&mut self, start_symbols: Vec<Id>) {
         self.compute_first_sets();
         self.compute_follow_sets();
         // TODO: predict sets?
@@ -181,7 +189,7 @@ impl<'a> GrammarHelper<'a> {
         for start_symbol in start_symbols {
             let mut new_set = BTreeSet::new();
             let new_item = LR0Item {
-                lhs: start_symbol.clone() + "'",
+                lhs: Id::from(format!("{}'", start_symbol)),
                 dot: 0,
                 symbols: vec![Symbol::NT(start_symbol)],
                 is_start: true,
@@ -370,6 +378,7 @@ impl<'a> GrammarHelper<'a> {
         }
     }
 
+    /// Converts this GrammarHelper instance into a ParseTable.
     pub fn parse_table(&self) -> ParseTable {
         let mut states = Vec::new();
         let reverse_map: BTreeMap<_, _> = self

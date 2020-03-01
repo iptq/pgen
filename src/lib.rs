@@ -7,6 +7,7 @@ pub extern crate regex;
 
 mod grammar;
 mod items;
+mod ordmap;
 mod parser;
 pub mod this;
 

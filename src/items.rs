@@ -1,8 +1,10 @@
+use symbol::Symbol as Id;
+
 use crate::grammar::Symbol;
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct LR0Item {
-    pub(crate) lhs: String,
+    pub(crate) lhs: Id,
     pub(crate) symbols: Vec<Symbol>,
     pub(crate) dot: usize,
     pub(crate) is_start: bool,
@@ -10,7 +12,7 @@ pub struct LR0Item {
 }
 
 impl LR0Item {
-    pub fn name_after_dot(&self) -> Option<String> {
+    pub fn name_after_dot(&self) -> Option<Id> {
         self.symbol_after_dot().map(|symbol| symbol.name())
     }
 

@@ -1,15 +1,16 @@
-use prettytable::{Cell, Row, Table};
-
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
+
+use prettytable::{Cell, Row, Table};
+use symbol::Symbol as Id;
 
 use crate::grammar::Production;
 use crate::grammar::Symbol;
 
 pub struct Parser {
-    pub(crate) start_symbols: Vec<String>,
-    pub(crate) terminals: HashMap<String, String>,
-    pub(crate) nonterminals: HashSet<String>,
+    pub(crate) start_symbols: Vec<Id>,
+    pub(crate) terminals: HashMap<Id, String>,
+    pub(crate) nonterminals: HashSet<Id>,
     pub(crate) table: ParseTable,
 }
 
@@ -18,7 +19,7 @@ impl Parser {
         let mut terminals: Vec<_> = self
             .terminals
             .keys()
-            .map(|term| Symbol::T(term.to_owned()))
+            .map(|term| Symbol::T(term.clone()))
             .collect();
         terminals.push(Symbol::EOF);
 
@@ -81,7 +82,7 @@ impl Parser {
         for (i, (_, goto)) in self.table_iter() {
             write!(w, "    [")?;
             for nonterminal in self.nonterminals.iter() {
-                if let Some(goto) = goto.get(&Symbol::NT(nonterminal.to_owned())) {
+                if let Some(goto) = goto.get(&Symbol::NT(nonterminal.clone())) {
                     write!(w, "{},", goto)?;
                 } else {
                     write!(w, "-1,")?;
@@ -132,6 +133,39 @@ impl Parser {
     ) -> impl Iterator<Item = (usize, &(HashMap<Symbol, Action>, HashMap<Symbol, usize>))> + '_
     {
         self.table.0.iter().enumerate()
+    }
+
+    pub fn interpret(&self, start: impl AsRef<str>, input: impl AsRef<str>) {
+        use regex::{Match, Regex};
+
+        let input = input.as_ref();
+        let start = start.as_ref();
+        println!("INTERPRETING {:?}", input);
+        println!("{:?}", self.start_symbols);
+        let regexes = self
+            .terminals
+            .values()
+            .map(|s| Regex::new(s).unwrap())
+            .collect::<Vec<_>>();
+
+        let state = 0;
+        let remain = &input;
+
+        // take 10 steps
+        for i in 0..10 {
+            // get the next token
+            let next_token = {
+                let mut longest_match = "";
+                for regex in &regexes {
+                    if let Some(m) = regex.find(&remain) {
+                        if m.as_str().len() > longest_match.len() {
+                            longest_match = m.as_str();
+                        }
+                    }
+                }
+                println!("longest_match: {}", longest_match);
+            };
+        }
     }
 }
 
