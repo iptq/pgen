@@ -6,7 +6,7 @@ use std::ops::Index;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
-pub struct OrdHashMap<K, V, H = DefaultHasher> {
+pub struct OrdHashMap<K: Debug, V: Debug, H = DefaultHasher> {
     head: Option<NonNull<Node<K, V>>>,
     tail: Option<NonNull<Node<K, V>>>,
     map: HashMap<u64, NonNull<Node<K, V>>>,
@@ -17,8 +17,8 @@ pub struct OrdHashMap<K, V, H = DefaultHasher> {
 struct Node<K, V> {
     prev: Option<NonNull<Node<K, V>>>,
     next: Option<NonNull<Node<K, V>>>,
-    key: K,
-    value: V,
+    key: Option<K>,
+    value: Option<V>,
 }
 
 /// Referential iterator
@@ -32,7 +32,9 @@ impl<'a, K: 'a, V: 'a> Iterator for Iter<'a, K, V> {
             self.0 = unsafe { (*node.as_ptr()).next };
             let key = unsafe { &(*node.as_ptr()).key };
             let value = unsafe { &(*node.as_ptr()).value };
-            Some((key, value))
+            debug_assert!(key.is_some(), "Key is none.");
+            debug_assert!(value.is_some(), "Value is none.");
+            Some((key.as_ref().unwrap(), value.as_ref().unwrap()))
         } else {
             None
         }
@@ -40,25 +42,27 @@ impl<'a, K: 'a, V: 'a> Iterator for Iter<'a, K, V> {
 }
 
 /// Item iterator
-pub struct IntoIter<K, V, H>(OrdHashMap<K, V, H>);
+pub struct IntoIter<K: Debug, V: Debug, H>(OrdHashMap<K, V, H>);
 
-impl<K, V, H> Iterator for IntoIter<K, V, H> {
+impl<K: Debug, V: Debug, H> Iterator for IntoIter<K, V, H> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(node) = self.0.head {
             let node_ptr = node.as_ptr();
             self.0.head = unsafe { (*node_ptr).next };
-            let key = unsafe { *Box::from_raw(&mut (*node_ptr).key) };
-            let value = unsafe { *Box::from_raw(&mut (*node_ptr).value) };
-            Some((key, value))
+            let mut key = unsafe { *Box::from_raw(&mut (*node_ptr).key) };
+            let mut value = unsafe { *Box::from_raw(&mut (*node_ptr).value) };
+            debug_assert!(key.is_some(), "Key is none.");
+            debug_assert!(value.is_some(), "Value is none.");
+            Some((key.take().unwrap(), value.take().unwrap()))
         } else {
             None
         }
     }
 }
 
-impl<K: Eq + Hash, V, H> Default for OrdHashMap<K, V, H> {
+impl<K: Eq + Hash + Debug, V: Debug, H> Default for OrdHashMap<K, V, H> {
     fn default() -> Self {
         OrdHashMap {
             head: None,
@@ -105,11 +109,14 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> Index<&K> for Ord
     }
 }
 
-impl<K, V, H> Drop for OrdHashMap<K, V, H> {
+impl<K: Debug, V: Debug, H> Drop for OrdHashMap<K, V, H> {
     fn drop(&mut self) {
-        for ptr in self.map.values_mut() {
-            let boxed = unsafe { Box::from_raw(ptr) };
+        for (_, node_ptr) in self.map.iter_mut() {
+            let node = unsafe { node_ptr.as_ref() };
+            eprintln!("Freeing {:?} {:?}", node_ptr, node);
+            let boxed = unsafe { Box::from_raw(node_ptr) };
         }
+        panic!("Dropped.");
     }
 }
 
@@ -121,7 +128,9 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
         let hash = h.finish();
 
         if let Some(node) = self.map.get(&hash) {
-            Some(&unsafe { node.as_ref() }.value)
+            let value_opt = unsafe { node.as_ref() }.value.as_ref();
+            debug_assert!(value_opt.is_some(), "Value is none.");
+            Some(value_opt.as_ref().unwrap())
         } else {
             None
         }
@@ -133,21 +142,18 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
         key.hash(&mut h);
         let hash = h.finish();
 
-        let result = if let Some(node) = self.map.remove(&hash) {
-            let node = unsafe { Box::from_raw(node.as_ptr()) };
+        if let Some(node) = self.map.remove(&hash) {
+            let mut node = unsafe { Box::from_raw(node.as_ptr()) };
 
             // set the previous's next to be this next
             if let Some(mut prev) = node.prev {
                 unsafe { prev.as_mut() }.next = node.next;
             }
-            Some(node.value)
+            debug_assert!(node.value.is_some(), "Value is none.");
+            node.value.take()
         } else {
             None
-        };
-
-        // debug_assert!(self.check_validity("remove::end"), "must be valid");
-
-        result
+        }
     }
 
     /// Inserts the specified item into the list
@@ -155,34 +161,37 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
     /// The inserted item will always be the last regardless of whether or not the key existed previously.
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         // debug_assert!(self.check_validity("insert::begin"), "must be valid");
+        eprintln!("Inserting {:?}: {:?}", key, value);
 
         let mut h = H::default();
         key.hash(&mut h);
         let hash = h.finish();
+        println!("Hash of {:?} is {}", key, hash);
 
         let old_value = self.remove(&key);
 
         let node = Node {
             prev: None,
             next: None,
-            key,
-            value,
+            key: Some(key),
+            value: Some(value),
         };
         let boxed_node = Box::new(node);
         let raw_boxed_node = Box::into_raw(boxed_node);
-        let mut node = unsafe { NonNull::new_unchecked(raw_boxed_node) };
+        let mut node_ptr = unsafe { NonNull::new_unchecked(raw_boxed_node) };
 
         if let Some(ref mut tail) = self.tail {
-            (*unsafe { node.as_mut() }).prev = Some(*tail);
-            (*unsafe { tail.as_mut() }).next = Some(node);
+            (*unsafe { node_ptr.as_mut() }).prev = Some(*tail);
+            (*unsafe { tail.as_mut() }).next = Some(node_ptr);
         }
 
         if let None = self.head {
-            self.head = Some(node);
+            self.head = Some(node_ptr);
         }
-        self.tail = Some(node);
-        self.map.insert(hash, node);
-        panic!("Boxed node: {:?}", unsafe { node.as_ref() });
+        self.tail = Some(node_ptr);
+        self.map.insert(hash, node_ptr);
+
+        println!("Hashmap: {:?}", self.map);
 
         debug_assert!(self.check_validity("insert::end"), "must be valid");
 
@@ -193,6 +202,7 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
     fn check_validity(&self, from: impl AsRef<str>) -> bool {
         let mut curr = self.head;
         let mut new_map = self.map.clone();
+        self.len();
         let len = new_map.len();
 
         for i in 0..len {
@@ -201,21 +211,26 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
             let curr2 = curr.unwrap();
             let node = unsafe { curr2.as_ref() };
 
+            let node_key = node.key.as_ref();
+            debug_assert!(node_key.is_some(), "Node key is none.");
             let mut h = H::default();
-            node.key.hash(&mut h);
+            node_key.unwrap().hash(&mut h);
             let hash = h.finish();
 
+            let new_map_debug = format!("{:?}", new_map);
             let removed = new_map.remove(&hash);
-            debug_assert!(removed.is_some(), "Linked list node {:?} is not in the hashmap.", node);
+            debug_assert!(removed.is_some(), "Linked list node {:?} (hash: {}) is not in the hashmap ({}).", node, hash, new_map_debug);
             let node_ptr = removed.unwrap();
 
             let hnode = unsafe { node_ptr.as_ref() };
             debug_assert!(hnode.value == node.value, "Linked list node {:?} doesn't have a matching value", node);
-            debug_assert!(false, "Got key {:?} and value {:?}", node.key, node.value);
+            // debug_assert!(false, "Got key {:?} and value {:?}", node.key, node.value);
+
+            curr = node.next;
         }
 
         debug_assert!(new_map.len() == 0, "New hash map has too many elements: {:?}", new_map);
-        debug_assert!(false, "wtf {}: {:?}", from.as_ref(), self);
+        // debug_assert!(false, "wtf {}: {:?}", from.as_ref(), self);
         true
     }
 }
@@ -227,7 +242,7 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq> OrdHashMap<K, V, DefaultHasher> {
     }
 }
 
-impl<K: Eq + Hash, V, H> OrdHashMap<K, V, H> {
+impl<K: Eq + Hash + Debug, V: Debug, H> OrdHashMap<K, V, H> {
     /// Creates an iterator for the list
     pub fn iter<'a>(&'a self) -> Iter<'a, K, V> {
         Iter(self.head, PhantomData::default())
@@ -240,6 +255,7 @@ impl<K: Eq + Hash, V, H> OrdHashMap<K, V, H> {
 
     /// Get the length of the map
     pub fn len(&self) -> usize {
+        debug_assert!(self.iter().collect::<Vec<_>>().len() == self.map.len(), "Map and linked list are not equal in size.");
         self.map.len()
     }
 }
@@ -269,29 +285,38 @@ mod tests {
     //     }
     // }
 
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+    struct Int(u32);
+
+    impl Drop for Int {
+        fn drop(&mut self) {
+            eprintln!("Dropping {}", self.0);
+        }
+    }
+
     #[test]
     fn test_insert() {
         let mut m = OrdHashMap::new();
         assert_eq!(m.len(), 0);
-        assert!(m.insert(1, 2).is_none());
+        assert!(m.insert(Int(1), Int(2)).is_none());
         assert_eq!(m.len(), 1);
-        assert!(m.insert(2, 4).is_none());
+        assert!(m.insert(Int(2), Int(4)).is_none());
         assert_eq!(m.len(), 2);
-        assert_eq!(*m.get(&1).unwrap(), 2);
-        assert_eq!(*m.get(&2).unwrap(), 4);
+        assert_eq!(*m.get(&Int(1)).unwrap(), Int(2));
+        assert_eq!(*m.get(&Int(2)).unwrap(), Int(4));
     }
 
     #[test]
     fn test_clone() {
         let mut m = HashMap::new();
         assert_eq!(m.len(), 0);
-        assert!(m.insert(1, 2).is_none());
+        assert!(m.insert(Int(1), Int(2)).is_none());
         assert_eq!(m.len(), 1);
-        assert!(m.insert(2, 4).is_none());
+        assert!(m.insert(Int(2), Int(4)).is_none());
         assert_eq!(m.len(), 2);
         let m2 = m.clone();
-        assert_eq!(*m2.get(&1).unwrap(), 2);
-        assert_eq!(*m2.get(&2).unwrap(), 4);
+        assert_eq!(*m2.get(&Int(1)).unwrap(), Int(2));
+        assert_eq!(*m2.get(&Int(2)).unwrap(), Int(4));
         assert_eq!(m2.len(), 2);
     }
 
