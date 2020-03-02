@@ -4,7 +4,6 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Index;
 use std::ptr::NonNull;
-use std::sync::Arc;
 
 pub struct OrdHashMap<K: Debug, V: Debug, H = DefaultHasher> {
     head: Option<NonNull<Node<K, V>>>,
@@ -199,7 +198,7 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
     }
 
     #[cfg(debug_assertions)]
-    fn check_validity(&self, from: impl AsRef<str>) -> bool {
+    fn check_validity(&self, _: impl AsRef<str>) -> bool {
         let mut curr = self.head;
         let mut new_map = self.map.clone();
         self.len();

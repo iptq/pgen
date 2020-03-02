@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 
@@ -9,7 +10,7 @@ use crate::grammar::Symbol;
 
 pub struct Parser {
     pub(crate) start_symbols: Vec<Id>,
-    pub(crate) terminals: HashMap<Id, String>,
+    pub(crate) terminals: IndexMap<Id, String>,
     pub(crate) nonterminals: HashSet<Id>,
     pub(crate) table: ParseTable,
 }
@@ -135,42 +136,58 @@ impl Parser {
         self.table.0.iter().enumerate()
     }
 
-    pub fn interpret(&self, start: impl AsRef<str>, input: impl AsRef<str>) {
-        use regex::{Match, Regex};
+    pub fn interpret(&self, _: impl AsRef<str>, input: impl AsRef<str>) {
+        use regex::*;
 
         let input = input.as_ref();
-        let start = start.as_ref();
         println!("INTERPRETING {:?}", input);
         println!("{:?}", self.start_symbols);
         let regexes = self
             .terminals
-            .values()
-            .map(|s| Regex::new(s).unwrap())
+            .iter()
+            .map(|(k, v)| (*k, Regex::new(&format!("^{}", v)).unwrap()))
             .collect::<Vec<_>>();
 
-        let state = 0;
-        let remain = &input;
+        let mut state = 0;
+        let mut consumed = 0;
+        let mut stack = Vec::new();
 
         // take 10 steps
-        for i in 0..10 {
-            // get the next token
-            let next_token = {
-                let mut longest_match = "";
-                for regex in &regexes {
-                    if let Some(m) = regex.find(&remain) {
-                        if m.as_str().len() > longest_match.len() {
-                            longest_match = m.as_str();
-                        }
+        for _ in 0..10 {
+            let mut longest_match = "";
+            let mut matched_id = Id::from("");
+            for (id, regex) in regexes.iter() {
+                // println!(" {} {:?}", regex.as_str(), regex.find(&input[consumed..]).map(|s| s.as_str()));
+                if let Some(m) = regex.find(&input[consumed..]) {
+                    let matched_str = m.as_str();
+                    if matched_str.len() > longest_match.len() {
+                        longest_match = matched_str;
+                        matched_id = *id;
                     }
                 }
-                println!("longest_match: {}", longest_match);
-            };
+            }
+            if longest_match.len() > 0 {
+                consumed += longest_match.len();
+                println!("Longest match: {}, id => {}", longest_match, matched_id);
+                let (actions, gotos) = &self.table.0[state];
+                println!("Row [{}]: {:?}", state, actions);
+                let action = &actions[&Symbol::T(matched_id)];
+                println!("action: {:?}", action);
+                match action {
+                    Action::Shift(new_state) => {
+                        stack.push(longest_match);
+                        state = *new_state;
+                    }
+                    _ => (),
+                }
+            }
         }
     }
 }
 
 pub struct ParseTable(pub(crate) Vec<(HashMap<Symbol, Action>, HashMap<Symbol, usize>)>);
 
+#[derive(Debug)]
 pub enum Action {
     Shift(usize),
     Reduce(usize),

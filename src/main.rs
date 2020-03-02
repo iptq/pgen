@@ -7,8 +7,8 @@ fn main() {
     let grammar = pgen::this::pgen_grammar();
     let parser = grammar.build().unwrap();
 
-    parser.interpret("E", "1+2*3");
-
     let file = File::create("wtf/src/lib.rs").unwrap();
-    parser.codegen(file);
+    parser.codegen(file).unwrap();
+
+    parser.interpret("E", "1+2*3");
 }

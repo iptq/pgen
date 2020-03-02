@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Write;
 
+use indexmap::IndexMap;
 use symbol::Symbol as Id;
 
 use crate::items::LR0Item;
@@ -21,8 +22,8 @@ pub enum GrammarError {
 
 pub struct Grammar {
     pub(crate) start_symbols: Vec<Id>,
-    pub(crate) terminals: HashMap<Id, String>,
-    pub(crate) productions: HashMap<Id, Vec<Production>>,
+    pub(crate) terminals: IndexMap<Id, String>,
+    pub(crate) productions: IndexMap<Id, Vec<Production>>,
 }
 
 impl Grammar {

@@ -5,13 +5,15 @@ authors = ["Michael Zhang <iptq@protonmail.com>"]
 edition = "2018"
 
 [workspace]
-members = ["wtf"]
+members = ["wtf", "ordmap"]
 
 [dependencies]
-regex = "1.3.1"
-thiserror = "1.0.9"
+ordmap = { path = "ordmap" }
 prettytable-rs = "0.8.0"
+regex = "1.3.1"
 symbol = "0.1.7"
+thiserror = "1.0.9"
+indexmap = "1.3.2"
 
 [dev-dependencies]
 proptest = "0.9.5"
