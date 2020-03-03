@@ -10,5 +10,5 @@ fn main() {
     let file = File::create("wtf/src/lib.rs").unwrap();
     parser.codegen(file).unwrap();
 
-    parser.interpret("E", "1+2*3");
+    parser.interpret("E", "1+1");
 }

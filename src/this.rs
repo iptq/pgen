@@ -1,31 +1,4 @@
-use symbol::Symbol as Id;
-
 use crate::Grammar;
-
-macro_rules! make_grammar {
-    {
-        start_symbols: [$($start_symbol:ident),* $(,)?],
-        terminals: {
-            $($tname:ident: $regex:expr),* $(,)?
-        },
-        productions: {$(
-            $ntname:ident: [$(
-                [$($symbol:ident),* $(,)?]
-            ),* $(,)?]
-        ),* $(,)?}
-        $(,)?
-    } => {
-        Grammar {
-            start_symbols: vec![$(Id::from(stringify!($start_symbol)))*],
-            terminals: vec![$((Id::from(stringify!($tname)), $regex.to_owned()),)*].into_iter().collect(),
-            productions: vec![$(
-                (Id::from(stringify!($ntname)), vec![
-                    $(vec![$(Id::from(stringify!($symbol)),)*].into_iter().into(),)*
-                ]),
-            )*].into_iter().collect(),
-        }
-    }
-}
 
 pub fn pgen_grammar() -> Grammar {
     make_grammar! {

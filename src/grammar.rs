@@ -20,6 +20,7 @@ pub enum GrammarError {
     StartingTerminal(Id),
 }
 
+#[derive(Debug)]
 pub struct Grammar {
     pub(crate) start_symbols: Vec<Id>,
     pub(crate) terminals: IndexMap<Id, String>,
@@ -27,8 +28,7 @@ pub struct Grammar {
 }
 
 impl Grammar {
-    /// Builds the main Parser struct.
-    pub fn build(self) -> Result<Parser, GrammarError> {
+    fn create_grammar_helper(&self) -> Result<GrammarHelper, GrammarError> {
         // name -> symbol map
         let grammar_symbols = {
             let mut symbols = HashMap::new();
@@ -77,7 +77,7 @@ impl Grammar {
             }
         }
 
-        let mut grammar_helper = GrammarHelper {
+        let grammar_helper = GrammarHelper {
             grammar: &self,
             grammar_symbols,
             canonical_collection: BTreeSet::new(),
@@ -85,6 +85,13 @@ impl Grammar {
             follow_sets: BTreeMap::new(),
             productions: grammar_productions,
         };
+
+        Ok(grammar_helper)
+    }
+
+    /// Builds the main Parser struct.
+    pub fn build(self) -> Result<Parser, GrammarError> {
+        let mut grammar_helper = self.create_grammar_helper()?;
         grammar_helper.init(self.start_symbols.clone());
         grammar_helper.build();
 
@@ -127,7 +134,7 @@ impl Symbol {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Production(pub(crate) Vec<Id>);
 
 impl<T: Iterator<Item = Id>> From<T> for Production {
@@ -155,6 +162,7 @@ impl Production {
     }
 }
 
+#[derive(Debug)]
 struct GrammarHelper<'a> {
     /// The reference to the actual grammar
     grammar: &'a Grammar,
@@ -274,6 +282,7 @@ impl<'a> GrammarHelper<'a> {
         }
     }
 
+    #[allow(non_snake_case)]
     fn compute_follow_sets(&mut self) {
         for start_symbol in self.grammar.start_symbols.iter() {
             let start_symbol = Symbol::NT(start_symbol.to_owned());
@@ -305,29 +314,34 @@ impl<'a> GrammarHelper<'a> {
                     let symbol_list = production.symbols(&self.grammar_symbols).unwrap();
                     // if A -> aBb, then take all of {FIRST(b) - e} and add it to FOLLOW(B)
                     if symbol_list.len() >= 2 {
-                        let b = &symbol_list[symbol_list.len() - 1];
-                        let B = &symbol_list[symbol_list.len() - 2];
-                        let mut b_first_set = self.first_sets.get(b).unwrap().clone();
-                        b_first_set.remove(&Symbol::Epsilon);
+                        for window in symbol_list.windows(2) {
+                            let B = &window[0];
+                            let b = &window[1];
 
-                        if let Some(mut follow_set) = self.follow_sets.get_mut(&B) {
-                            if !follow_set.is_superset(&b_first_set) {
-                                follow_set.append(&mut b_first_set);
-                                changes = true;
+                            let mut b_first_set = self.first_sets.get(b).unwrap().clone();
+                            b_first_set.remove(&Symbol::Epsilon);
+
+                            if let Some(follow_set) = self.follow_sets.get_mut(&B) {
+                                if !follow_set.is_superset(&b_first_set) {
+                                    follow_set.append(&mut b_first_set);
+                                    changes = true;
+                                }
                             }
                         }
                     }
 
                     // if A -> aB, then everythign in FOLLOW(A) is in FOLLOW(B)
                     if symbol_list.len() >= 1 {
-                        let B = &symbol_list[symbol_list.len() - 1];
+                        for window in symbol_list.windows(2) {
+                            let B = &window[1];
 
-                        let mut a_follow_set =
-                            self.follow_sets.get_mut(&nonterminal).unwrap().clone();
-                        if let Some(mut follow_set) = self.follow_sets.get_mut(&B) {
-                            if !follow_set.is_superset(&a_follow_set) {
-                                follow_set.append(&mut a_follow_set);
-                                changes = true;
+                            let mut a_follow_set =
+                                self.follow_sets.get_mut(&nonterminal).unwrap().clone();
+                            if let Some(follow_set) = self.follow_sets.get_mut(&B) {
+                                if !follow_set.is_superset(&a_follow_set) {
+                                    follow_set.append(&mut a_follow_set);
+                                    changes = true;
+                                }
                             }
                         }
                     }
@@ -340,7 +354,7 @@ impl<'a> GrammarHelper<'a> {
                         if b_first_set.contains(&Symbol::Epsilon) {
                             let mut a_follow_set =
                                 self.follow_sets.get_mut(&nonterminal).unwrap().clone();
-                            if let Some(mut follow_set) = self.follow_sets.get_mut(&B) {
+                            if let Some(follow_set) = self.follow_sets.get_mut(&B) {
                                 if !follow_set.is_superset(&a_follow_set) {
                                     follow_set.append(&mut a_follow_set);
                                     changes = true;
@@ -358,6 +372,7 @@ impl<'a> GrammarHelper<'a> {
     }
 
     // Figure 4.34 of the dragon book
+    #[allow(non_snake_case)]
     pub fn build(&mut self) {
         let mut to_add = BTreeSet::new();
         loop {
@@ -470,5 +485,78 @@ impl<'a> GrammarHelper<'a> {
             }
         }
         item_set
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Grammar;
+    use super::Symbol;
+    use std::collections::{BTreeMap, BTreeSet};
+    use symbol::Symbol as Id;
+
+    fn remove_terminals<V: Clone>(map: &BTreeMap<Symbol, V>) -> BTreeMap<Symbol, V> {
+        let mut map = map.clone();
+        let mut to_remove = BTreeSet::new();
+        for key in map.keys() {
+            if let Symbol::T(_) = key {
+                to_remove.insert(key.clone());
+            }
+        }
+        for key in to_remove {
+            map.remove(&key);
+        }
+        map
+    }
+
+    fn make_arith_1() -> Grammar {
+        make_grammar! {
+            start_symbols: [E],
+            terminals: {
+                Add: r"\+",
+                Mul: r"\*",
+                N0: r"0",
+                N1: r"1",
+            },
+            productions: {
+                E: [ [E, Mul, B], [E, Add, B], [B] ],
+                B: [ [N0], [N1] ],
+            }
+        }
+    }
+
+    #[test]
+    fn test_arith_1() {
+        use super::Symbol::*;
+        let grammar = make_arith_1();
+        let mut helper = grammar.create_grammar_helper().unwrap();
+
+        // First sets
+        helper.compute_first_sets();
+        let actual_first_sets = remove_terminals(&helper.first_sets);
+        let expected_first_sets = btreemap! {
+            NT(Id::from("E")) => btreeset!{ T(Id::from("N0")), T(Id::from("N1")), },
+            NT(Id::from("B")) => btreeset!{ T(Id::from("N0")), T(Id::from("N1")), },
+        };
+        assert!(
+            actual_first_sets.iter().eq(expected_first_sets.iter()),
+            "Expected: {:?}, Got: {:?}",
+            expected_first_sets,
+            actual_first_sets
+        );
+
+        // Follow sets
+        helper.compute_follow_sets();
+        let actual_follow_sets = remove_terminals(&helper.follow_sets);
+        let expected_follow_sets = btreemap! {
+            NT(Id::from("E")) => btreeset!{ T(Id::from("Add")), T(Id::from("Mul")), EOF, },
+            NT(Id::from("B")) => btreeset!{ T(Id::from("Add")), T(Id::from("Mul")), EOF, },
+        };
+        assert!(
+            actual_follow_sets.iter().eq(expected_follow_sets.iter()),
+            "Expected: {:?}, Got: {:?}",
+            expected_follow_sets,
+            actual_follow_sets
+        );
     }
 }

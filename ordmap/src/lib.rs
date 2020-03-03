@@ -206,7 +206,12 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
 
         for i in 0..len {
             // make sure we're still there
-            debug_assert!(curr.is_some(), "Linked list too short ({} vs. expected {}).", i, len);
+            debug_assert!(
+                curr.is_some(),
+                "Linked list too short ({} vs. expected {}).",
+                i,
+                len
+            );
             let curr2 = curr.unwrap();
             let node = unsafe { curr2.as_ref() };
 
@@ -218,17 +223,31 @@ impl<K: Eq + Hash + Debug, V: Debug + Eq, H: Hasher + Default> OrdHashMap<K, V, 
 
             let new_map_debug = format!("{:?}", new_map);
             let removed = new_map.remove(&hash);
-            debug_assert!(removed.is_some(), "Linked list node {:?} (hash: {}) is not in the hashmap ({}).", node, hash, new_map_debug);
+            debug_assert!(
+                removed.is_some(),
+                "Linked list node {:?} (hash: {}) is not in the hashmap ({}).",
+                node,
+                hash,
+                new_map_debug
+            );
             let node_ptr = removed.unwrap();
 
             let hnode = unsafe { node_ptr.as_ref() };
-            debug_assert!(hnode.value == node.value, "Linked list node {:?} doesn't have a matching value", node);
+            debug_assert!(
+                hnode.value == node.value,
+                "Linked list node {:?} doesn't have a matching value",
+                node
+            );
             // debug_assert!(false, "Got key {:?} and value {:?}", node.key, node.value);
 
             curr = node.next;
         }
 
-        debug_assert!(new_map.len() == 0, "New hash map has too many elements: {:?}", new_map);
+        debug_assert!(
+            new_map.len() == 0,
+            "New hash map has too many elements: {:?}",
+            new_map
+        );
         // debug_assert!(false, "wtf {}: {:?}", from.as_ref(), self);
         true
     }
@@ -254,7 +273,10 @@ impl<K: Eq + Hash + Debug, V: Debug, H> OrdHashMap<K, V, H> {
 
     /// Get the length of the map
     pub fn len(&self) -> usize {
-        debug_assert!(self.iter().collect::<Vec<_>>().len() == self.map.len(), "Map and linked list are not equal in size.");
+        debug_assert!(
+            self.iter().collect::<Vec<_>>().len() == self.map.len(),
+            "Map and linked list are not equal in size."
+        );
         self.map.len()
     }
 }

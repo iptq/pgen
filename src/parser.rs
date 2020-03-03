@@ -2,12 +2,12 @@ use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 
-use prettytable::{Cell, Row, Table};
+use prettytable::Table;
 use symbol::Symbol as Id;
 
-use crate::grammar::Production;
 use crate::grammar::Symbol;
 
+#[derive(Debug)]
 pub struct Parser {
     pub(crate) start_symbols: Vec<Id>,
     pub(crate) terminals: IndexMap<Id, String>,
@@ -185,6 +185,7 @@ impl Parser {
     }
 }
 
+#[derive(Debug)]
 pub struct ParseTable(pub(crate) Vec<(HashMap<Symbol, Action>, HashMap<Symbol, usize>)>);
 
 #[derive(Debug)]
